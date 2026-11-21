@@ -1,0 +1,30 @@
+{
+  "name": "job-search-engine",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "db:migrate": "dotenv -e .env.local -- tsx scripts/migrate.ts",
+    "ingest": "dotenv -e .env.local -- tsx scripts/ingest.ts",
+    "ingest:greenhouse": "dotenv -e .env.local -- tsx scripts/ingest-greenhouse.ts"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "next": "^16.4.6",
+    "pg": "^8.16.3",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.1",
+    "@types/pg": "^8.15.5",
+    "@types/react": "^19.1.16",
+    "@types/react-dom": "^19.1.9",
+    "dotenv-cli": "^11.1.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}
