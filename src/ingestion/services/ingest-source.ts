@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import type { ATSConnector } from "../connectors/ats-connector";
 import type { ATSSource, NormalizedJob } from "../types";
 import { getConnector } from "../registry";
 
@@ -9,6 +10,11 @@ export interface IngestionSummary {
     jobsInserted: number;
     jobsUpdated: number;
     jobsUnchanged: number;
+}
+
+export interface IngestSourceOptions {
+    /** Allows fixture-backed persistence tests to avoid live ATS requests. */
+    connector?: ATSConnector;
 }
 
 async function persistJob(
@@ -148,6 +154,7 @@ async function persistJob(
 export async function ingestSource(
     pool: Pool,
     source: ATSSource,
+    options: IngestSourceOptions = {},
 ): Promise<IngestionSummary> {
     const runResult = await pool.query<{ id: string }>(
         `INSERT INTO ingestion_runs (ats_source_id, status)
@@ -167,7 +174,7 @@ export async function ingestSource(
     let jobsUnchanged = 0;
 
     try {
-        const connector = getConnector(source.provider);
+        const connector = options.connector ?? getConnector(source.provider);
         const jobs = await connector.fetchJobs(source);
 
         for (const job of jobs) {
@@ -192,9 +199,10 @@ export async function ingestSource(
            finished_at = NOW(),
            jobs_seen = $2,
            jobs_inserted = $3,
-           jobs_updated = $4
+           jobs_updated = $4,
+           jobs_unchanged = $5
        WHERE id = $1`,
-            [runId, jobsSeen, jobsInserted, jobsUpdated],
+            [runId, jobsSeen, jobsInserted, jobsUpdated, jobsUnchanged],
         );
 
         return {

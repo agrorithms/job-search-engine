@@ -27,10 +27,21 @@ GREENHOUSE_CAREERS_URL=https://company.example/careers
 ```
 Run `npm run ingest:greenhouse`. Repeat it to confirm that existing postings are updated rather than duplicated.
 
-For Lever and Ashby, insert an active `ats_sources` row and run `npm run ingest`:
+The initial 20-company registry is supplied by migration `002_seed_validated_sources.sql`.
+It contains seven Greenhouse, six Lever, and seven Ashby boards whose public JSON
+endpoints were checked before they were added. Run the migration and then:
+
+```bash
+npm run ingest
+```
+
+For an additional employer, insert an active `ats_sources` row and run `npm run ingest`:
 
 - Lever: `provider='lever'`, `board_identifier` is the site slug in `jobs.lever.co/<slug>`.
 - Ashby: `provider='ashby'`, `board_identifier` is the board name in `jobs.ashbyhq.com/<board-name>`.
+
+See [the validated ingestion workflow](docs/06_VALIDATED_INGESTION_WORKFLOW.md) for
+the seeded boards, verification queries, repeat-run expectations, and provider caveats.
 
 ## Commands
 `npm run typecheck` · `npm test` · `npm run db:migrate` · `npm run ingest:greenhouse` · `npm run build`
@@ -39,7 +50,8 @@ For Lever and Ashby, insert an active `ats_sources` row and run `npm run ingest`
 `companies`, `ats_sources`, `job_postings`, `job_sources`, `ingestion_runs`, `profiles`, `resume_documents`, `job_embeddings`, `job_matches`, `saved_jobs`.
 
 ## Known limitations
-- Greenhouse, Lever, and Ashby connectors exist. Lever and Ashby sources are added through `ats_sources` and fetched with `npm run ingest`.
+- Greenhouse, Lever, and Ashby connectors exist. `npm run ingest` processes every active source sequentially.
+- Greenhouse currently performs a single request without retries or an explicit timeout; Lever and Ashby retry network, 429, and 5xx failures. Do not interpret a failed run as an empty listing.
 - Project design docs live in `docs/`.
 - No resume parsing, embeddings generation, LLM evaluation, or scheduled worker yet.
 - HTML stripping is intentionally lightweight; replace with a robust parser and tests before relying on extracted description text.
