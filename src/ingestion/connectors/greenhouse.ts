@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { ATSConnector } from "./ats-connector";
 import type { ATSSource, NormalizedJob } from "../types";
+import { htmlToText } from "../text";
 
 interface GreenhouseJob {
   id: number | string;
@@ -16,30 +17,38 @@ interface GreenhouseResponse {
   jobs?: GreenhouseJob[];
 }
 
-function toText(html: string | null | undefined): string | null {
-  if (!html) return null;
+/**
+ * Greenhouse returns `content` as entity-escaped HTML (e.g. "&lt;p&gt;Hi&lt;/p&gt;").
+ * Decode that one layer first so the tags become real tags, then strip them;
+ * doing it the other way round leaves literal <p> text in the description.
+ */
+export function greenhouseContentToText(
+  content: string | null | undefined,
+): string | null {
+  if (!content) return null;
 
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<\/(p|div|li|h[1-6]|br)>/gi, "\n")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/[ \t]+/g, " ")
-    .trim();
+  const ENTITIES: Record<string, string> = {
+    "&lt;": "<",
+    "&gt;": ">",
+    "&amp;": "&",
+    "&quot;": '"',
+    "&#39;": "'",
+    "&apos;": "'",
+  };
+  const html = content.replace(
+    /&(?:lt|gt|amp|quot|apos|#39);/gi,
+    (entity) => ENTITIES[entity.toLowerCase()] ?? entity,
+  );
+
+  return htmlToText(html);
 }
 
-function normalizeGreenhouseJob(raw: GreenhouseJob): NormalizedJob {
+export function normalizeGreenhouseJob(raw: GreenhouseJob): NormalizedJob {
   if (raw.id === undefined || !raw.title?.trim() || !raw.absolute_url) {
     throw new Error("Greenhouse job missing id, title, or URL");
   }
 
-  const description = toText(raw.content);
+  const description = greenhouseContentToText(raw.content);
   const location = raw.location?.name?.trim() || null;
   const title = raw.title.trim();
 
