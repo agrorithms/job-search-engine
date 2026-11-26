@@ -7,7 +7,15 @@
       "department": "Engineering",
       "descriptionHtml": "<h2>What you'll do</h2><p>Build reliable <strong>platforms</strong>.</p><ul><li>TypeScript</li><li>PostgreSQL</li></ul><script>ignore()</script>",
       "applyUrl": "https://jobs.ashbyhq.com/acme/018f0ca0-0000-7000-8000-000000000001/application",
-      "publishedAt": "2024-06-01T12:00:00.000Z"
+      "publishedAt": "2024-06-01T12:00:00.000Z",
+      "workplaceType": "Remote",
+      "employmentType": "FullTime",
+      "compensation": {
+        "summaryComponents": [
+          { "interval": "NONE", "maxValue": null, "minValue": null, "currencyCode": null, "compensationType": "EquityPercentage" },
+          { "interval": "1 YEAR", "maxValue": 229000, "minValue": 195000, "currencyCode": "USD", "compensationType": "Salary" }
+        ]
+      }
     },
     {
       "id": 42,
@@ -16,7 +24,14 @@
       "team": { "name": "Data" },
       "descriptionPlain": "  Build data pipelines.  ",
       "jobUrl": "https://jobs.ashbyhq.com/acme/42",
-      "publishedAt": "not-a-date"
+      "publishedAt": "not-a-date",
+      "workplaceType": "OnSite",
+      "employmentType": "Intern",
+      "compensation": {
+        "summaryComponents": [
+          { "interval": "1 HOUR", "maxValue": 45, "minValue": 40, "currencyCode": "USD", "compensationType": "Salary" }
+        ]
+      }
     }
   ]
 }

@@ -38,6 +38,20 @@ test("handles sparse posting: trimmed title, fallback location/dept/url, strippe
   assert.equal(job.description, "Analyse data.");
 });
 
+test("maps workplace type, commitment, and annual salary; leaves the rest unknown", () => {
+  const full = normalizeLeverPosting(fixture[0]);
+  assert.equal(full.workplaceType, "remote");
+  assert.equal(full.employmentType, "full_time");
+  assert.deepEqual([full.salaryMin, full.salaryMax, full.salaryCurrency], [160000, 200000, "USD"]);
+
+  // "unspecified" workplace, a commitment that names no employment type, and
+  // a monthly range all stay null.
+  const sparse = normalizeLeverPosting(fixture[1]);
+  assert.equal(sparse.workplaceType, null);
+  assert.equal(sparse.employmentType, null);
+  assert.deepEqual([sparse.salaryMin, sparse.salaryMax, sparse.salaryCurrency], [null, null, null]);
+});
+
 test("rejects postings missing id, title, or URL, and non-objects", () => {
   assert.throws(() => normalizeLeverPosting({ text: "x", hostedUrl: "u" }), /missing required/);
   assert.throws(() => normalizeLeverPosting({ id: "1", hostedUrl: "u" }), /missing required/);

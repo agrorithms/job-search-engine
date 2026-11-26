@@ -35,6 +35,22 @@ test("supports structured location/team, job URL fallback, and invalid dates", (
   assert.match(job.applicationUrl, /ashbyhq/);
 });
 
+test("maps workplace type, employment type, and annual salary only", () => {
+  const remote = normalizeAshbyJob(fixture.jobs[0]);
+  assert.equal(remote.workplaceType, "remote");
+  assert.equal(remote.employmentType, "full_time");
+  assert.deepEqual(
+    [remote.salaryMin, remote.salaryMax, remote.salaryCurrency],
+    [195000, 229000, "USD"],
+  );
+
+  // Hourly pay is kept in the raw payload, not the annual salary columns.
+  const intern = normalizeAshbyJob(fixture.jobs[1]);
+  assert.equal(intern.workplaceType, "onsite");
+  assert.equal(intern.employmentType, "internship");
+  assert.deepEqual([intern.salaryMin, intern.salaryMax, intern.salaryCurrency], [null, null, null]);
+});
+
 test("rejects malformed postings", () => {
   assert.throws(() => normalizeAshbyJob({ title: "x", applyUrl: "url" }), /missing required/);
   assert.throws(() => normalizeAshbyJob({ id: "1", applyUrl: "url" }), /missing required/);

@@ -3,6 +3,19 @@ import type { ATSConnector } from "./ats-connector";
 import type { ATSSource, NormalizedJob } from "../types";
 import { htmlToText } from "../text";
 import { getWithRetry, type HttpOptions, type HttpResult } from "../http";
+import {
+  annualSalary,
+  NO_SALARY,
+  normalizeEmploymentType,
+  normalizeWorkplaceType,
+  type AnnualSalary,
+} from "../structured";
+
+/** Lever's salaryRange carries its own pay period; keep only annual ranges. */
+function leverAnnualSalary(salaryRange: unknown): AnnualSalary {
+  if (!isRecord(salaryRange) || salaryRange.interval !== "per-year-salary") return NO_SALARY;
+  return annualSalary(salaryRange.min, salaryRange.max, salaryRange.currency);
+}
 
 const HOSTS = ["https://api.lever.co", "https://api.eu.lever.co"] as const;
 
@@ -109,6 +122,9 @@ export function normalizeLeverPosting(value: unknown): NormalizedJob {
     department,
     applicationUrl,
     postedAt: postedAt && !Number.isNaN(postedAt.getTime()) ? postedAt : null,
+    workplaceType: normalizeWorkplaceType(value.workplaceType),
+    employmentType: normalizeEmploymentType(categories.commitment),
+    ...leverAnnualSalary(value.salaryRange),
     contentHash,
     rawPayload: value,
   };

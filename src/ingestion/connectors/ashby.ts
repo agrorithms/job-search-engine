@@ -3,6 +3,13 @@ import type { ATSConnector } from "./ats-connector";
 import type { ATSSource, NormalizedJob } from "../types";
 import { htmlToText } from "../text";
 import { getWithRetry, type HttpOptions } from "../http";
+import {
+  annualSalary,
+  NO_SALARY,
+  normalizeEmploymentType,
+  normalizeWorkplaceType,
+  type AnnualSalary,
+} from "../structured";
 
 export type AshbyConnectorOptions = HttpOptions;
 
@@ -18,6 +25,24 @@ function optionalText(record: Record<string, unknown>, key: string): string | nu
 function nestedName(record: Record<string, unknown>, key: string): string | null {
   const value = record[key];
   return isRecord(value) ? optionalText(value, "name") : null;
+}
+
+/**
+ * Ashby lists compensation as `summaryComponents`; use the single annual
+ * Salary component. Equity, bonuses, and hourly/monthly pay are left in the
+ * raw payload.
+ */
+function ashbyAnnualSalary(compensation: unknown): AnnualSalary {
+  if (!isRecord(compensation) || !Array.isArray(compensation.summaryComponents)) return NO_SALARY;
+  const annual = compensation.summaryComponents.filter(
+    (component): component is Record<string, unknown> =>
+      isRecord(component) &&
+      component.compensationType === "Salary" &&
+      component.interval === "1 YEAR",
+  );
+  if (annual.length !== 1) return NO_SALARY;
+  const [salary] = annual as [Record<string, unknown>];
+  return annualSalary(salary.minValue, salary.maxValue, salary.currencyCode);
 }
 
 /** Normalize a public Ashby posting while retaining its complete raw response. */
@@ -65,6 +90,9 @@ export function normalizeAshbyJob(value: unknown): NormalizedJob {
     applicationUrl,
     postedAt:
       parsedPostedAt && !Number.isNaN(parsedPostedAt.getTime()) ? parsedPostedAt : null,
+    workplaceType: normalizeWorkplaceType(value.workplaceType),
+    employmentType: normalizeEmploymentType(value.employmentType),
+    ...ashbyAnnualSalary(value.compensation),
     contentHash,
     rawPayload: value,
   };
