@@ -222,8 +222,10 @@ not a deadline.
     (see `06_VALIDATED_INGESTION_WORKFLOW.md`).
 -   Phase 4 is partly complete: keyword search plus company, location,
     workplace, employment-type, salary, and posting-date filters.
-    Remaining: choose an embedding model, generate job embeddings,
-    semantic retrieval, RRF hybrid ranking, and the search-mode switch.
+    Remaining: generate job embeddings, semantic retrieval, RRF hybrid
+    ranking, and the search-mode switch. The embedding model is chosen
+    (local `qwen3-embedding:0.6b`, 1024 dimensions); see
+    `07_EMBEDDINGS_AND_HYBRID_SEARCH.md` for the design and decision log.
     Seniority is not yet populated by any connector.
 -   The vertical slice below is complete.
 
