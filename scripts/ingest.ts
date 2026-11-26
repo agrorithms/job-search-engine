@@ -38,8 +38,16 @@ async function main(): Promise<void> {
             console.log(
                 `Completed ${summary.provider}: ${summary.jobsSeen} seen, ` +
                 `${summary.jobsInserted} inserted, ${summary.jobsUpdated} updated, ` +
-                `${summary.jobsUnchanged} unchanged, ${summary.jobsDeactivated} closed.`,
+                `${summary.jobsUnchanged} unchanged, ${summary.jobsReactivated} reactivated, ` +
+                `${summary.jobsMissing} missing, ${summary.jobsDeactivated} expired.`,
             );
+            if (summary.missingCheckSkipped) {
+                console.warn(
+                    `  Warning: ${source.provider} board ${source.board_identifier} returned ` +
+                    `an empty listing while it still has active jobs; missing-job ` +
+                    `detection was skipped for this run.`,
+                );
+            }
         } catch (error) {
             failed += 1;
             console.error(

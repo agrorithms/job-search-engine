@@ -3,6 +3,7 @@ import type { ATSConnector } from "./ats-connector";
 import type { ATSSource, NormalizedJob } from "../types";
 import { htmlToText } from "../text";
 import { getWithRetry, type HttpOptions } from "../http";
+import { NO_SALARY } from "../structured";
 
 interface GreenhouseJob {
   id: number | string;
@@ -81,6 +82,11 @@ export function normalizeGreenhouseJob(raw: GreenhouseJob): NormalizedJob {
         .join(", ") || null,
     applicationUrl: raw.absolute_url,
     postedAt,
+    // The public Greenhouse board API has no structured workplace, employment
+    // type, or salary fields; leave them unknown rather than parse prose.
+    workplaceType: null,
+    employmentType: null,
+    ...NO_SALARY,
     contentHash,
     rawPayload: raw,
   };

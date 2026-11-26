@@ -11,6 +11,7 @@
     },
     "country": "US",
     "workplaceType": "remote",
+    "salaryRange": { "min": 160000, "max": 200000, "currency": "USD", "interval": "per-year-salary" },
     "createdAt": 1700000000000,
     "description": "<div>We build &amp; run the platform.</div>",
     "descriptionPlain": "We build & run the platform.",
@@ -26,7 +27,9 @@
   {
     "id": "5f2c0a1e-2222-4a1b-9c1d-000000000002",
     "text": "  Data Analyst ",
-    "categories": { "team": "Analytics", "allLocations": ["London", "Berlin"] },
+    "categories": { "team": "Analytics", "commitment": "Global | LATAM", "allLocations": ["London", "Berlin"] },
+    "workplaceType": "unspecified",
+    "salaryRange": { "min": 3000, "max": 4000, "currency": "EUR", "interval": "per-month-salary" },
     "description": "<p>Analyse data.</p><script>evil()</script>",
     "hostedUrl": "https://jobs.lever.co/acme/5f2c0a1e-2222-4a1b-9c1d-000000000002"
   }

@@ -44,18 +44,25 @@ See [the validated ingestion workflow](docs/06_VALIDATED_INGESTION_WORKFLOW.md) 
 the seeded boards, verification queries, repeat-run expectations, and provider caveats.
 
 ## Commands
-`npm run typecheck` · `npm test` · `npm run db:migrate` · `npm run ingest:greenhouse` · `npm run build`
+`npm run typecheck` · `npm test` · `npm run db:migrate` · `npm run ingest` · `npm run ingest:greenhouse` · `npm run build`
 
 ## Included tables
-`companies`, `ats_sources`, `job_postings`, `job_sources`, `ingestion_runs`, `profiles`, `resume_documents`, `job_embeddings`, `job_matches`, `saved_jobs`.
+`companies`, `ats_sources`, `job_postings`, `job_sources`, `job_events`, `ingestion_runs`, `profiles`, `resume_documents`, `job_embeddings`, `job_matches`, `saved_jobs`.
+
+## Search
+The home page searches active jobs: keywords (PostgreSQL full-text search over title,
+description, and location, with `websearch_to_tsquery` syntax such as `"data engineer" -senior`),
+company, location, workplace type, employment type, minimum annual USD salary, and posting date.
+Results are paginated and every filter is a URL parameter, so searches can be bookmarked.
 
 ## Known limitations
 - Greenhouse, Lever, and Ashby connectors exist. `npm run ingest` processes every active source sequentially.
-- Greenhouse currently performs a single request without retries or an explicit timeout; Lever and Ashby retry network, 429, and 5xx failures. Do not interpret a failed run as an empty listing.
+- All connectors share a timeout and retry network, 429, and 5xx failures. A failed run never counts as an empty listing.
+- A job is expired only after it is absent from 2 consecutive successful listings of its source; an empty listing from a source that still has active jobs skips the check. Expiry, reactivation, creation, and updates are recorded in `job_events`.
+- Workplace type, employment type, and salary come only from structured provider fields (Ashby, Lever). The public Greenhouse API doesn't supply them, so those filters exclude Greenhouse jobs. Only annual salary ranges are stored in the salary columns; hourly/monthly pay stays in `raw_payload`. Seniority is not populated yet.
+- Search is keyword-only. No embeddings, semantic or hybrid search, resume parsing, LLM evaluation, or scheduled worker yet.
 - Project design docs live in `docs/`.
-- No resume parsing, embeddings generation, LLM evaluation, or scheduled worker yet.
 - HTML stripping is intentionally lightweight; replace with a robust parser and tests before relying on extracted description text.
-- Missing postings are not marked inactive. Only implement expiry after repeated successful complete source fetches.
 - The embedding column is `vector(1536)` as a placeholder; change it to match the embedding model selected before writing vectors.
 - Add authentication before exposing the app beyond localhost.
 - Do not commit `.env.local`; do not send resume data to an external model without deciding on provider/data handling.

@@ -215,6 +215,18 @@ not a deadline.
                           monitoring              
   -----------------------------------------------------------------------
 
+## Progress (2026-11-26)
+
+-   Phases 1--3 are complete: three ATS connectors, a 20-employer registry,
+    ingestion history, and the missing-job policy with `job_events`
+    (see `06_VALIDATED_INGESTION_WORKFLOW.md`).
+-   Phase 4 is partly complete: keyword search plus company, location,
+    workplace, employment-type, salary, and posting-date filters.
+    Remaining: choose an embedding model, generate job embeddings,
+    semantic retrieval, RRF hybrid ranking, and the search-mode switch.
+    Seniority is not yet populated by any connector.
+-   The vertical slice below is complete.
+
 ## Immediate implementation priority
 
 Build a small vertical slice before scaling the employer list:
