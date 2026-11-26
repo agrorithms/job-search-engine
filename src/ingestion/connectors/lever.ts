@@ -2,19 +2,11 @@ import { createHash } from "node:crypto";
 import type { ATSConnector } from "./ats-connector";
 import type { ATSSource, NormalizedJob } from "../types";
 import { htmlToText } from "../text";
+import { getWithRetry, type HttpOptions, type HttpResult } from "../http";
 
 const HOSTS = ["https://api.lever.co", "https://api.eu.lever.co"] as const;
-const REQUEST_TIMEOUT_MS = 15_000;
-const MAX_ATTEMPTS = 3;
-const BASE_BACKOFF_MS = 500;
 
-type FetchFn = typeof fetch;
-type SleepFn = (ms: number) => Promise<void>;
-
-export interface LeverConnectorOptions {
-  fetchImpl?: FetchFn;
-  sleep?: SleepFn;
-}
+export type LeverConnectorOptions = HttpOptions;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -122,65 +114,20 @@ export function normalizeLeverPosting(value: unknown): NormalizedJob {
   };
 }
 
-const defaultSleep: SleepFn = (ms) =>
-  new Promise((resolve) => setTimeout(resolve, ms));
-
-function isTransient(status: number): boolean {
-  return status === 429 || status >= 500;
-}
-
 export class LeverConnector implements ATSConnector {
   readonly provider = "lever";
 
-  private readonly fetchImpl: FetchFn;
-  private readonly sleep: SleepFn;
-
-  constructor(options: LeverConnectorOptions = {}) {
-    this.fetchImpl = options.fetchImpl ?? ((...args) => fetch(...args));
-    this.sleep = options.sleep ?? defaultSleep;
-  }
-
-  /**
-   * GET with timeout and exponential backoff on network errors, 429, and 5xx.
-   * Returns the final response (which may be a non-OK, non-transient status).
-   */
-  private async getWithRetry(url: string): Promise<Response> {
-    let lastError: unknown;
-
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-      try {
-        const response = await this.fetchImpl(url, {
-          headers: { accept: "application/json" },
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        });
-
-        if (!isTransient(response.status) || attempt === MAX_ATTEMPTS) {
-          return response;
-        }
-        await response.text(); // release the connection before retrying
-        lastError = new Error(`Lever HTTP ${response.status}`);
-      } catch (error) {
-        lastError = error;
-        if (attempt === MAX_ATTEMPTS) break;
-      }
-
-      await this.sleep(BASE_BACKOFF_MS * 2 ** (attempt - 1));
-    }
-
-    const detail = lastError instanceof Error ? lastError.message : String(lastError);
-    throw new Error(`Lever request failed after ${MAX_ATTEMPTS} attempts: ${detail}`);
-  }
+  constructor(private readonly http: LeverConnectorOptions = {}) {}
 
   async fetchJobs(source: ATSSource): Promise<NormalizedJob[]> {
     const site = encodeURIComponent(source.board_identifier);
-    let response: Response | null = null;
+    let response: HttpResult | null = null;
 
     // Lever has separate global and EU hosts. A site lives on exactly one, so
     // fall through to EU only when the global host says 404.
     for (const host of HOSTS) {
-      response = await this.getWithRetry(`${host}/v0/postings/${site}?mode=json`);
+      response = await getWithRetry(`${host}/v0/postings/${site}?mode=json`, "Lever", this.http);
       if (response.status !== 404) break;
-      await response.text();
     }
 
     if (!response || response.status === 404) {
@@ -190,12 +137,12 @@ export class LeverConnector implements ATSConnector {
     }
 
     if (!response.ok) {
-      throw new Error(`Lever HTTP ${response.status}: ${await response.text()}`);
+      throw new Error(`Lever HTTP ${response.status}: ${response.text}`);
     }
 
     let body: unknown;
     try {
-      body = await response.json();
+      body = JSON.parse(response.text);
     } catch {
       throw new Error("Lever response was not valid JSON");
     }

@@ -8,7 +8,7 @@ import type { ATSSource, NormalizedJob } from "../src/ingestion/types";
 type StoredJob = Pick<
   NormalizedJob,
   "title" | "description" | "location" | "department" | "applicationUrl" | "postedAt" | "contentHash"
-> & { id: string };
+> & { id: string; isActive: boolean };
 
 type StoredRun = {
   id: string;
@@ -29,8 +29,17 @@ class FixtureDatabase {
   readonly jobs = new Map<string, StoredJob>();
   readonly sourceJobs = new Map<string, string>();
   readonly runs = new Map<string, StoredRun>();
+  /** externalJobId -> logical time job_sources.last_seen_at was last set. */
+  readonly sourceSeenAt = new Map<string, number>();
+  readonly rawPayloads = new Map<string, unknown>();
   private nextJob = 1;
   private nextRun = 1;
+  /** Monotonic stand-in for the database's NOW(). */
+  private clock = 0;
+  /** Every statement executed, whitespace-normalized, in order. */
+  readonly log: string[] = [];
+  /** Statements starting with this prefix throw, simulating a DB error. */
+  failOn: string | null = null;
 
   async connect(): Promise<this> {
     return this;
@@ -43,6 +52,11 @@ class FixtureDatabase {
     params: unknown[] = [],
   ): Promise<{ rows: T[]; rowCount: number }> {
     const normalized = sql.replace(/\s+/g, " ").trim();
+    const now = ++this.clock;
+    this.log.push(normalized);
+    if (this.failOn && normalized.startsWith(this.failOn)) {
+      throw new Error(`column "jobs_unchanged" does not exist`);
+    }
 
     if (normalized === "BEGIN" || normalized === "COMMIT" || normalized === "ROLLBACK") {
       return { rows: [], rowCount: 0 };
@@ -54,7 +68,7 @@ class FixtureDatabase {
         id, status: "running", jobsSeen: 0, jobsInserted: 0, jobsUpdated: 0,
         jobsUnchanged: 0, errorMessage: null,
       });
-      return { rows: [{ id }] as unknown as T[], rowCount: 1 };
+      return { rows: [{ id, started_at: new Date(now) }] as unknown as T[], rowCount: 1 };
     }
 
     if (normalized.startsWith("SELECT js.job_id")) {
@@ -62,7 +76,13 @@ class FixtureDatabase {
       const jobId = this.sourceJobs.get(externalJobId);
       const job = jobId ? this.jobs.get(jobId) : undefined;
       return job
-        ? { rows: [{ job_id: job.id, content_hash: job.contentHash, application_url: job.applicationUrl }] as unknown as T[], rowCount: 1 }
+        ? {
+            rows: [{
+              job_id: job.id, content_hash: job.contentHash, application_url: job.applicationUrl,
+              department: job.department, posted_at: job.postedAt,
+            }] as unknown as T[],
+            rowCount: 1,
+          }
         : { rows: [], rowCount: 0 };
     }
 
@@ -71,13 +91,15 @@ class FixtureDatabase {
         string, string, string | null, string | null, string | null, string, Date | null, string,
       ];
       const id = `job-${this.nextJob++}`;
-      this.jobs.set(id, { id, title, description, location, department, applicationUrl, postedAt, contentHash });
+      this.jobs.set(id, { id, title, description, location, department, applicationUrl, postedAt, contentHash, isActive: true });
       return { rows: [{ id }] as unknown as T[], rowCount: 1 };
     }
 
     if (normalized.startsWith("INSERT INTO job_sources")) {
-      const [jobId, , externalJobId] = params as [string, string, string];
+      const [jobId, , externalJobId, , rawPayload] = params as [string, string, string, string, string];
       this.sourceJobs.set(externalJobId, jobId);
+      this.sourceSeenAt.set(externalJobId, now);
+      this.rawPayloads.set(externalJobId, JSON.parse(rawPayload));
       return { rows: [], rowCount: 1 };
     }
 
@@ -87,15 +109,39 @@ class FixtureDatabase {
       ];
       const job = this.jobs.get(jobId);
       if (!job) throw new Error(`Unknown job ${jobId}`);
-      Object.assign(job, { title, description, location, department, applicationUrl, postedAt, contentHash });
+      Object.assign(job, { title, description, location, department, applicationUrl, postedAt, contentHash, isActive: true });
       return { rows: [], rowCount: 1 };
     }
 
-    if (
-      normalized.startsWith("UPDATE job_postings SET last_seen_at") ||
-      normalized.startsWith("UPDATE job_sources SET") ||
-      normalized.startsWith("UPDATE ats_sources SET")
-    ) {
+    if (normalized.startsWith("UPDATE job_postings SET last_seen_at")) {
+      const [jobId] = params as [string];
+      const job = this.jobs.get(jobId);
+      if (!job) throw new Error(`Unknown job ${jobId}`);
+      job.isActive = true;
+      return { rows: [], rowCount: 1 };
+    }
+
+    if (normalized.startsWith("UPDATE job_sources SET")) {
+      const [, externalJobId, rawPayload] = params as [string, string, string];
+      this.sourceSeenAt.set(externalJobId, now);
+      this.rawPayloads.set(externalJobId, JSON.parse(rawPayload));
+      return { rows: [], rowCount: 1 };
+    }
+
+    if (normalized.startsWith("UPDATE job_postings SET is_active = FALSE")) {
+      const [, startedAt] = params as [string, Date];
+      let rowCount = 0;
+      for (const [externalJobId, jobId] of this.sourceJobs) {
+        const job = this.jobs.get(jobId);
+        if (job?.isActive && (this.sourceSeenAt.get(externalJobId) ?? 0) < startedAt.getTime()) {
+          job.isActive = false;
+          rowCount += 1;
+        }
+      }
+      return { rows: [], rowCount };
+    }
+
+    if (normalized.startsWith("UPDATE ats_sources SET")) {
       return { rows: [], rowCount: 1 };
     }
 
@@ -151,7 +197,7 @@ test("persists fixture jobs on the initial ingestion", async () => {
 
   assert.deepEqual(summary, {
     sourceId: "source-1", provider: "lever", jobsSeen: 2,
-    jobsInserted: 2, jobsUpdated: 0, jobsUnchanged: 0,
+    jobsInserted: 2, jobsUpdated: 0, jobsUnchanged: 0, jobsDeactivated: 0,
   });
   assert.equal(database.jobs.size, 2);
   assert.equal(database.sourceJobs.size, 2);
@@ -201,4 +247,75 @@ test("a failed source fetch preserves previously persisted jobs", async () => {
   const failed = [...database.runs.values()][1];
   assert.equal(failed?.status, "failed");
   assert.equal(failed?.errorMessage, "fixture fetch failed");
+});
+
+const storedJob = (database: FixtureDatabase, externalJobId: string) =>
+  database.jobs.get(database.sourceJobs.get(externalJobId)!)!;
+
+test("a department or posting-date change is an update even when the hash matches", async () => {
+  const database = new FixtureDatabase();
+  await ingestSource(asPool(database), source, { connector: new FixtureConnector([makeJob("job-a")]) });
+
+  const moved = { ...makeJob("job-a"), department: "Platform" };
+  const deptRun = await ingestSource(asPool(database), source, { connector: new FixtureConnector([moved]) });
+  assert.equal(deptRun.jobsUpdated, 1);
+  assert.equal(storedJob(database, "job-a").department, "Platform");
+
+  const redated = { ...moved, postedAt: new Date("2026-02-01T00:00:00.000Z") };
+  const dateRun = await ingestSource(asPool(database), source, { connector: new FixtureConnector([redated]) });
+  assert.equal(dateRun.jobsUpdated, 1);
+  assert.equal(storedJob(database, "job-a").postedAt?.toISOString(), "2026-02-01T00:00:00.000Z");
+});
+
+test("an unchanged job still refreshes its raw payload", async () => {
+  const database = new FixtureDatabase();
+  await ingestSource(asPool(database), source, { connector: new FixtureConnector([makeJob("job-a")]) });
+  const sameContent = { ...makeJob("job-a"), rawPayload: { id: "job-a", extra: "new provider field" } };
+  const summary = await ingestSource(asPool(database), source, { connector: new FixtureConnector([sameContent]) });
+
+  assert.equal(summary.jobsUnchanged, 1);
+  assert.deepEqual(database.rawPayloads.get("job-a"), { id: "job-a", extra: "new provider field" });
+});
+
+test("jobs that drop off the board are deactivated, and come back if relisted", async () => {
+  const database = new FixtureDatabase();
+  await ingestSource(asPool(database), source, {
+    connector: new FixtureConnector([makeJob("job-a"), makeJob("job-b")]),
+  });
+
+  const closed = await ingestSource(asPool(database), source, { connector: new FixtureConnector([makeJob("job-a")]) });
+  assert.equal(closed.jobsDeactivated, 1);
+  assert.equal(storedJob(database, "job-a").isActive, true);
+  assert.equal(storedJob(database, "job-b").isActive, false);
+
+  const relisted = await ingestSource(asPool(database), source, {
+    connector: new FixtureConnector([makeJob("job-a"), makeJob("job-b")]),
+  });
+  assert.equal(relisted.jobsDeactivated, 0);
+  assert.equal(storedJob(database, "job-b").isActive, true);
+});
+
+test("a failed fetch does not deactivate anything", async () => {
+  const database = new FixtureDatabase();
+  await ingestSource(asPool(database), source, { connector: new FixtureConnector([makeJob("job-a")]) });
+  await assert.rejects(
+    ingestSource(asPool(database), source, { connector: new FixtureConnector(new Error("boom")) }),
+  );
+  assert.equal(storedJob(database, "job-a").isActive, true);
+});
+
+test("if recording the run fails, the source is not marked successful", async () => {
+  const database = new FixtureDatabase();
+  database.failOn = "UPDATE ingestion_runs SET status = 'succeeded'";
+
+  await assert.rejects(
+    ingestSource(asPool(database), source, { connector: new FixtureConnector([makeJob("job-a")]) }),
+    /jobs_unchanged/,
+  );
+
+  const finalize = database.log.slice(database.log.lastIndexOf("BEGIN"));
+  assert.ok(finalize.includes("ROLLBACK"), "finalize transaction must roll back");
+  assert.ok(!finalize.includes("COMMIT"));
+  assert.ok(!database.log.some((q) => q.includes("last_success_at")), "last_success_at must not be set");
+  assert.equal([...database.runs.values()][0]?.status, "failed");
 });

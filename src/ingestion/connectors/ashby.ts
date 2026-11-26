@@ -2,18 +2,9 @@ import { createHash } from "node:crypto";
 import type { ATSConnector } from "./ats-connector";
 import type { ATSSource, NormalizedJob } from "../types";
 import { htmlToText } from "../text";
+import { getWithRetry, type HttpOptions } from "../http";
 
-const REQUEST_TIMEOUT_MS = 15_000;
-const MAX_ATTEMPTS = 3;
-const BASE_BACKOFF_MS = 500;
-
-type FetchFn = typeof fetch;
-type SleepFn = (ms: number) => Promise<void>;
-
-export interface AshbyConnectorOptions {
-  fetchImpl?: FetchFn;
-  sleep?: SleepFn;
-}
+export type AshbyConnectorOptions = HttpOptions;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -79,64 +70,26 @@ export function normalizeAshbyJob(value: unknown): NormalizedJob {
   };
 }
 
-const defaultSleep: SleepFn = (ms) =>
-  new Promise((resolve) => setTimeout(resolve, ms));
-
-function isTransient(status: number): boolean {
-  return status === 429 || status >= 500;
-}
-
 export class AshbyConnector implements ATSConnector {
   readonly provider = "ashby";
 
-  private readonly fetchImpl: FetchFn;
-  private readonly sleep: SleepFn;
-
-  constructor(options: AshbyConnectorOptions = {}) {
-    this.fetchImpl = options.fetchImpl ?? ((...args) => fetch(...args));
-    this.sleep = options.sleep ?? defaultSleep;
-  }
-
-  private async getWithRetry(url: string): Promise<Response> {
-    let lastError: unknown;
-
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-      try {
-        const response = await this.fetchImpl(url, {
-          headers: { accept: "application/json" },
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        });
-
-        if (!isTransient(response.status) || attempt === MAX_ATTEMPTS) {
-          return response;
-        }
-        await response.text();
-        lastError = new Error(`Ashby HTTP ${response.status}`);
-      } catch (error) {
-        lastError = error;
-        if (attempt === MAX_ATTEMPTS) break;
-      }
-
-      await this.sleep(BASE_BACKOFF_MS * 2 ** (attempt - 1));
-    }
-
-    const detail = lastError instanceof Error ? lastError.message : String(lastError);
-    throw new Error(`Ashby request failed after ${MAX_ATTEMPTS} attempts: ${detail}`);
-  }
+  constructor(private readonly http: AshbyConnectorOptions = {}) {}
 
   async fetchJobs(source: ATSSource): Promise<NormalizedJob[]> {
     const board = encodeURIComponent(source.board_identifier);
-    const response = await this.getWithRetry(
+    const response = await getWithRetry(
       `https://api.ashbyhq.com/posting-api/job-board/${board}?includeCompensation=true`,
+      "Ashby",
+      this.http,
     );
 
     if (!response.ok) {
-      throw new Error(`Ashby HTTP ${response.status}: ${await response.text()}`);
+      throw new Error(`Ashby HTTP ${response.status}: ${response.text}`);
     }
 
     let body: unknown;
     try {
-      body = await response.json();
+      body = JSON.parse(response.text);
     } catch {
       throw new Error("Ashby response was not valid JSON");
     }

@@ -61,6 +61,44 @@ postings in `jobs_unchanged` and zero inserts. A posting may legitimately be upd
 between live runs, so compare the run aggregates rather than assuming every source
 will be unchanged.
 
+## Verified local database result (2026-11-26)
+
+The local PostgreSQL database was checked after the migration and the two documented
+multi-source ingestion runs. The registry contains **20 companies** and **20 active
+sources**: 7 Greenhouse, 6 Lever, and 7 Ashby. Every stored source has the expected
+provider endpoint pattern, a non-empty board identifier, and both `last_checked_at`
+and `last_success_at` set.
+
+| Provider | Active sources | All recorded succeeded runs | Seen | Inserted | Updated | Unchanged |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Ashby | 7 | 14 | 924 | 462 | 0 | 462 |
+| Greenhouse | 7 | 18 | 8,780 | 2,913 | 3,037 | 2,830 |
+| Lever | 6 | 12 | 424 | 212 | 0 | 212 |
+
+Those all-history totals include earlier Stripe-only Greenhouse refreshes already in
+the local database. The two 20-source runs at 2026-11-26 00:33 ET were:
+
+| Run | Sources | Seen | Inserted | Updated | Unchanged | Failed |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Initial seeded-board run | 20 | 3,504 | 2,772 | 732 | 0 | 0 |
+| Repeat seeded-board run | 20 | 3,504 | 0 | 0 | 3,504 | 0 |
+
+The initial run updated 732 pre-existing Stripe records and inserted 40 newly seen
+Stripe records; the other seeded-board observations were inserts. This is normal for
+a board that had already been ingested and is not a duplicate condition. The repeat
+run was entirely unchanged, so no live-board updates need explanation.
+
+Current persisted totals are **3,587 `job_postings`** and **3,587 `job_sources`**.
+The difference from the 3,504 current observations is 83 older Stripe source records
+that are still retained because expiration/inactivation is intentionally not
+implemented. The uniqueness verification returned **0 duplicate
+`(ats_source_id, external_job_id)` groups** and **0 duplicate rows beyond the first**.
+
+No failed `ingestion_runs` were present, so no connector or source-configuration
+issue was diagnosed. The 20 source configurations are all active and use the
+provider-specific public endpoint forms shown above; this is consistent with the
+connectors, which derive their fetch URLs from `provider` and `board_identifier`.
+
 ## Fixture-backed persistence coverage
 
 `tests/ingest-source.test.ts` exercises the shared ingestion/persistence boundary

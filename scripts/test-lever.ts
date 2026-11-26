@@ -42,4 +42,7 @@ async function main() {
     console.log("Lever connector validation passed.");
 }
 
-main().catch(console.error);
+main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+});

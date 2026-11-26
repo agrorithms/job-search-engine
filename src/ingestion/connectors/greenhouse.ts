@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { ATSConnector } from "./ats-connector";
 import type { ATSSource, NormalizedJob } from "../types";
 import { htmlToText } from "../text";
+import { getWithRetry, type HttpOptions } from "../http";
 
 interface GreenhouseJob {
   id: number | string;
@@ -10,6 +11,8 @@ interface GreenhouseJob {
   content?: string | null;
   absolute_url?: string;
   updated_at?: string;
+  /** When the posting first went live; `updated_at` moves on every edit. */
+  first_published?: string | null;
   departments?: Array<{ name?: string }>;
 }
 
@@ -58,7 +61,9 @@ export function normalizeGreenhouseJob(raw: GreenhouseJob): NormalizedJob {
     .update([raw.title, description ?? "", raw.location?.name ?? ""].join("\n"))
     .digest("hex");
 
-  const parsedPostedAt = raw.updated_at ? new Date(raw.updated_at) : null;
+  // Not updated_at: that changes on every edit and would make old roles
+  // look newly posted.
+  const parsedPostedAt = raw.first_published ? new Date(raw.first_published) : null;
   const postedAt =
     parsedPostedAt && !Number.isNaN(parsedPostedAt.getTime())
       ? parsedPostedAt
@@ -81,25 +86,32 @@ export function normalizeGreenhouseJob(raw: GreenhouseJob): NormalizedJob {
   };
 }
 
+export type GreenhouseConnectorOptions = HttpOptions;
+
 export class GreenhouseConnector implements ATSConnector {
   readonly provider = "greenhouse";
+
+  constructor(private readonly http: GreenhouseConnectorOptions = {}) {}
 
   async fetchJobs(source: ATSSource): Promise<NormalizedJob[]> {
     const url =
       `https://boards-api.greenhouse.io/v1/boards/` +
       `${encodeURIComponent(source.board_identifier)}/jobs?content=true`;
 
-    const response = await fetch(url, {
-      headers: { accept: "application/json" },
-    });
+    const response = await getWithRetry(url, "Greenhouse", this.http);
 
     if (!response.ok) {
       throw new Error(
-        `Greenhouse HTTP ${response.status}: ${await response.text()}`,
+        `Greenhouse HTTP ${response.status}: ${response.text}`,
       );
     }
 
-    const body = (await response.json()) as GreenhouseResponse;
+    let body: GreenhouseResponse;
+    try {
+      body = JSON.parse(response.text) as GreenhouseResponse;
+    } catch {
+      throw new Error("Greenhouse response was not valid JSON");
+    }
 
     if (!Array.isArray(body.jobs)) {
       throw new Error("Greenhouse response missing jobs array");
