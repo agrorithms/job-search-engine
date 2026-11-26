@@ -1,0 +1,33 @@
+[
+  {
+    "id": "5f2c0a1e-1111-4a1b-9c1d-000000000001",
+    "text": "Senior Backend Engineer",
+    "categories": {
+      "commitment": "Full-time",
+      "department": "Engineering",
+      "location": "Remote - US",
+      "team": "Platform",
+      "allLocations": ["Remote - US", "New York"]
+    },
+    "country": "US",
+    "workplaceType": "remote",
+    "createdAt": 1700000000000,
+    "description": "<div>We build &amp; run the platform.</div>",
+    "descriptionPlain": "We build & run the platform.",
+    "lists": [
+      { "text": "What you'll do", "content": "<li>Design APIs</li><li>Own services</li>" },
+      { "text": "Requirements", "content": "<li>Python &amp; SQL</li><li>5+ years</li>" }
+    ],
+    "additional": "<div>Equal opportunity employer.</div>",
+    "additionalPlain": "Equal opportunity employer.",
+    "hostedUrl": "https://jobs.lever.co/acme/5f2c0a1e-1111-4a1b-9c1d-000000000001",
+    "applyUrl": "https://jobs.lever.co/acme/5f2c0a1e-1111-4a1b-9c1d-000000000001/apply"
+  },
+  {
+    "id": "5f2c0a1e-2222-4a1b-9c1d-000000000002",
+    "text": "  Data Analyst ",
+    "categories": { "team": "Analytics", "allLocations": ["London", "Berlin"] },
+    "description": "<p>Analyse data.</p><script>evil()</script>",
+    "hostedUrl": "https://jobs.lever.co/acme/5f2c0a1e-2222-4a1b-9c1d-000000000002"
+  }
+]

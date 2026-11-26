@@ -28,13 +28,14 @@ GREENHOUSE_CAREERS_URL=https://company.example/careers
 Run `npm run ingest:greenhouse`. Repeat it to confirm that existing postings are updated rather than duplicated.
 
 ## Commands
-`npm run typecheck` · `npm run db:migrate` · `npm run ingest:greenhouse` · `npm run build`
+`npm run typecheck` · `npm test` · `npm run db:migrate` · `npm run ingest:greenhouse` · `npm run build`
 
 ## Included tables
 `companies`, `ats_sources`, `job_postings`, `job_sources`, `ingestion_runs`, `profiles`, `resume_documents`, `job_embeddings`, `job_matches`, `saved_jobs`.
 
 ## Known limitations
-- Greenhouse importer only; Lever/Ashby adapters are next.
+- Greenhouse and Lever connectors exist; Ashby is next. Lever sources are added by inserting an `ats_sources` row (`provider='lever'`, `board_identifier` = the site slug in `jobs.lever.co/<slug>`) and running `npm run ingest`.
+- Project design docs live in `docs/`.
 - No resume parsing, embeddings generation, LLM evaluation, or scheduled worker yet.
 - HTML stripping is intentionally lightweight; replace with a robust parser and tests before relying on extracted description text.
 - Missing postings are not marked inactive. Only implement expiry after repeated successful complete source fetches.

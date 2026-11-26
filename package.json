@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "db:migrate": "dotenv -e .env.local -- tsx scripts/migrate.ts",
     "ingest": "dotenv -e .env.local -- tsx scripts/ingest.ts",
-    "ingest:greenhouse": "dotenv -e .env.local -- tsx scripts/ingest-greenhouse.ts"
+    "ingest:greenhouse": "dotenv -e .env.local -- tsx scripts/ingest-greenhouse.ts",
+    "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "dotenv": "^16.4.7",
