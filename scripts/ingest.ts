@@ -37,7 +37,8 @@ async function main(): Promise<void> {
 
             console.log(
                 `Completed ${summary.provider}: ${summary.jobsSeen} seen, ` +
-                `${summary.jobsInserted} inserted, ${summary.jobsUpdated} updated.`,
+                `${summary.jobsInserted} inserted, ${summary.jobsUpdated} updated, ` +
+                `${summary.jobsUnchanged} unchanged.`,
             );
         } catch (error) {
             failed += 1;

@@ -8,30 +8,58 @@ export interface IngestionSummary {
     jobsSeen: number;
     jobsInserted: number;
     jobsUpdated: number;
+    jobsUnchanged: number;
 }
 
 async function persistJob(
     pool: Pool,
     source: ATSSource,
     job: NormalizedJob,
-): Promise<"inserted" | "updated"> {
+): Promise<"inserted" | "updated" | "unchanged"> {
     const client = await pool.connect();
 
     try {
         await client.query("BEGIN");
 
-        const existing = await client.query<{ job_id: string }>(
-            `SELECT job_id
-       FROM job_sources
-       WHERE ats_source_id = $1 AND external_job_id = $2
-       FOR UPDATE`,
+        const existing = await client.query<{
+            job_id: string;
+            content_hash: string | null;
+            application_url: string;
+        }>(
+            `SELECT js.job_id, jp.content_hash, jp.application_url
+       FROM job_sources js
+       JOIN job_postings jp ON jp.id = js.job_id
+       WHERE js.ats_source_id = $1 AND js.external_job_id = $2
+       FOR UPDATE OF js, jp`,
             [source.id, job.externalJobId],
         );
 
         const rawPayloadJson = JSON.stringify(job.rawPayload ?? null);
 
         if (existing.rowCount && existing.rows[0]) {
-            const jobId = existing.rows[0].job_id;
+            const { job_id: jobId, content_hash, application_url } = existing.rows[0];
+
+            // Same content: record that we saw it, but don't rewrite the row
+            // or bump updated_at. The URL is checked separately because the
+            // content hashes do not include it.
+            if (
+                content_hash === job.contentHash &&
+                application_url === job.applicationUrl
+            ) {
+                await client.query(
+                    `UPDATE job_postings
+           SET last_seen_at = NOW(), is_active = TRUE
+           WHERE id = $1`,
+                    [jobId],
+                );
+                await client.query(
+                    `UPDATE job_sources SET last_seen_at = NOW()
+           WHERE ats_source_id = $1 AND external_job_id = $2`,
+                    [source.id, job.externalJobId],
+                );
+                await client.query("COMMIT");
+                return "unchanged";
+            }
 
             await client.query(
                 `UPDATE job_postings
@@ -136,6 +164,7 @@ export async function ingestSource(
     let jobsSeen = 0;
     let jobsInserted = 0;
     let jobsUpdated = 0;
+    let jobsUnchanged = 0;
 
     try {
         const connector = getConnector(source.provider);
@@ -146,7 +175,8 @@ export async function ingestSource(
 
             jobsSeen += 1;
             if (outcome === "inserted") jobsInserted += 1;
-            else jobsUpdated += 1;
+            else if (outcome === "updated") jobsUpdated += 1;
+            else jobsUnchanged += 1;
         }
 
         await pool.query(
@@ -173,6 +203,7 @@ export async function ingestSource(
             jobsSeen,
             jobsInserted,
             jobsUpdated,
+            jobsUnchanged,
         };
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
