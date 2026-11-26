@@ -1,29 +1,28 @@
-import { pool } from "@/lib/db/pool";
+import { getActiveJobs } from "@/lib/jobs/get-active-jobs";
+import { formatPostedDate } from "@/lib/jobs/catalog";
 export const dynamic = "force-dynamic";
-async function stats() {
-  try {
-    const r = await pool.query(`SELECT COUNT(*) FILTER (WHERE is_active) active_jobs,
-      COUNT(*) FILTER (WHERE is_active AND first_seen_at > NOW()-INTERVAL '7 days') new_this_week,
-      COUNT(DISTINCT company_id) FILTER (WHERE is_active) companies FROM job_postings`);
-    return r.rows[0];
-  } catch { return null; }
-}
+
 export default async function Home() {
-  const s = await stats();
+  const jobs = await getActiveJobs();
+
   return <main className="shell">
-    <header><div><small>PERSONAL WORKSPACE</small><h1>Job Search Engine</h1></div><span>MVP scaffold</span></header>
-    <section className="intro"><small>OVERVIEW</small><h2>Your job search, in one place.</h2>
-      <p>This first version establishes the database, ingestion pipeline, and dashboard shell. Matching and profile management come next.</p></section>
-    <section className="metrics">
-      <Metric label="Active jobs" value={s?.active_jobs ?? "—"}/>
-      <Metric label="New this week" value={s?.new_this_week ?? "—"}/>
-      <Metric label="Companies" value={s?.companies ?? "—"}/>
-    </section>
-    <section className="panel"><small>NEXT BUILD STEP</small><h2>Connect your first employer</h2>
-      <p>Add a Greenhouse board token to <code>.env.local</code>, then run:</p><pre>npm run ingest:greenhouse</pre></section>
+    <header><div><small>PERSONAL WORKSPACE</small><h1>Job Search Engine</h1></div><span>Catalog</span></header>
+    <section className="intro"><small>ACTIVE JOBS</small><h2>Recently observed opportunities.</h2>
+      <p>Showing the 200 most recently seen active postings from your local catalog.</p></section>
+    {jobs.length === 0 ? <section className="panel"><h2>No active jobs yet</h2><p>Run the ingestion worker to populate the catalog.</p></section> :
+      <section className="catalog" aria-label="Active job postings">
+        <div className="catalog-heading"><span>{jobs.length} active jobs</span><span>Most recently seen first</span></div>
+        <div className="table-wrap"><table><thead><tr><th>Role</th><th>Location</th><th>Department</th><th>Posted</th><th>Status</th><th><span className="sr-only">Application</span></th></tr></thead>
+          <tbody>{jobs.map((job) => <tr key={job.id}>
+            <td><strong>{job.title}</strong><span className="company">{job.companyName}</span></td>
+            <td>{job.location ?? "Location unavailable"}</td>
+            <td>{job.department ?? "—"}</td>
+            <td>{formatPostedDate(job.postedAt)}</td>
+            <td><span className={job.isActive ? "status active" : "status"}>{job.isActive ? "Active" : "Inactive"}</span></td>
+            <td><a href={job.applicationUrl} target="_blank" rel="noreferrer">Apply<span className="sr-only"> for {job.title} at {job.companyName}</span> ↗</a></td>
+          </tr>)}</tbody>
+        </table></div>
+      </section>}
     <footer>Personal job-search project · Local development</footer>
   </main>;
-}
-function Metric({label,value}:{label:string;value:string}) {
-  return <article><p>{label}</p><strong>{value}</strong></article>;
 }
