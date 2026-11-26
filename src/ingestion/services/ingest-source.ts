@@ -10,11 +10,17 @@ export interface IngestionSummary {
     jobsInserted: number;
     jobsUpdated: number;
     jobsUnchanged: number;
+    /** Jobs previously listed by this source that it no longer returns. */
+    jobsDeactivated: number;
 }
 
 export interface IngestSourceOptions {
     /** Allows fixture-backed persistence tests to avoid live ATS requests. */
     connector?: ATSConnector;
+}
+
+function sameInstant(a: Date | null, b: Date | null): boolean {
+    return (a?.getTime() ?? null) === (b?.getTime() ?? null);
 }
 
 async function persistJob(
@@ -31,8 +37,11 @@ async function persistJob(
             job_id: string;
             content_hash: string | null;
             application_url: string;
+            department: string | null;
+            posted_at: Date | null;
         }>(
-            `SELECT js.job_id, jp.content_hash, jp.application_url
+            `SELECT js.job_id, jp.content_hash, jp.application_url,
+              jp.department, jp.posted_at
        FROM job_sources js
        JOIN job_postings jp ON jp.id = js.job_id
        WHERE js.ats_source_id = $1 AND js.external_job_id = $2
@@ -43,14 +52,18 @@ async function persistJob(
         const rawPayloadJson = JSON.stringify(job.rawPayload ?? null);
 
         if (existing.rowCount && existing.rows[0]) {
-            const { job_id: jobId, content_hash, application_url } = existing.rows[0];
+            const stored = existing.rows[0];
+            const jobId = stored.job_id;
 
             // Same content: record that we saw it, but don't rewrite the row
-            // or bump updated_at. The URL is checked separately because the
-            // content hashes do not include it.
+            // or bump updated_at. Fields the connectors' hashes don't cover
+            // (URL, posting date, and department for Greenhouse) are compared
+            // directly so a change to any of them still counts as an update.
             if (
-                content_hash === job.contentHash &&
-                application_url === job.applicationUrl
+                stored.content_hash === job.contentHash &&
+                stored.application_url === job.applicationUrl &&
+                stored.department === job.department &&
+                sameInstant(stored.posted_at, job.postedAt)
             ) {
                 await client.query(
                     `UPDATE job_postings
@@ -58,10 +71,12 @@ async function persistJob(
            WHERE id = $1`,
                     [jobId],
                 );
+                // raw_payload is the provider's latest response, so keep it
+                // current even when nothing we display has changed.
                 await client.query(
-                    `UPDATE job_sources SET last_seen_at = NOW()
+                    `UPDATE job_sources SET raw_payload = $3::jsonb, last_seen_at = NOW()
            WHERE ats_source_id = $1 AND external_job_id = $2`,
-                    [source.id, job.externalJobId],
+                    [source.id, job.externalJobId, rawPayloadJson],
                 );
                 await client.query("COMMIT");
                 return "unchanged";
@@ -156,15 +171,16 @@ export async function ingestSource(
     source: ATSSource,
     options: IngestSourceOptions = {},
 ): Promise<IngestionSummary> {
-    const runResult = await pool.query<{ id: string }>(
+    const runResult = await pool.query<{ id: string; started_at: Date }>(
         `INSERT INTO ingestion_runs (ats_source_id, status)
      VALUES ($1, 'running')
-     RETURNING id`,
+     RETURNING id, started_at`,
         [source.id],
     );
 
     const runId = runResult.rows[0]?.id;
-    if (!runId) {
+    const runStartedAt = runResult.rows[0]?.started_at;
+    if (!runId || !runStartedAt) {
         throw new Error(`Could not create ingestion run for source ${source.id}`);
     }
 
@@ -186,15 +202,32 @@ export async function ingestSource(
             else jobsUnchanged += 1;
         }
 
-        await pool.query(
-            `UPDATE ats_sources
-       SET last_checked_at = NOW(), last_success_at = NOW()
-       WHERE id = $1`,
-            [source.id],
-        );
+        // Deactivating closed jobs, recording the run as succeeded and setting
+        // last_success_at commit together, so a source is never marked
+        // successful while its run says failed (e.g. if a migration such as
+        // 002's jobs_unchanged column hasn't been applied yet).
+        let jobsDeactivated = 0;
+        const client = await pool.connect();
+        try {
+            await client.query("BEGIN");
 
-        await pool.query(
-            `UPDATE ingestion_runs
+            // The fetch succeeded and returned the board's complete listing,
+            // so any job of this source not seen during this run has been
+            // closed. Both timestamps come from the database clock.
+            const deactivated = await client.query(
+                `UPDATE job_postings
+       SET is_active = FALSE, updated_at = NOW()
+       WHERE is_active = TRUE
+         AND id IN (
+           SELECT job_id FROM job_sources
+           WHERE ats_source_id = $1 AND last_seen_at < $2
+         )`,
+                [source.id, runStartedAt],
+            );
+            jobsDeactivated = deactivated.rowCount ?? 0;
+
+            await client.query(
+                `UPDATE ingestion_runs
        SET status = 'succeeded',
            finished_at = NOW(),
            jobs_seen = $2,
@@ -202,8 +235,23 @@ export async function ingestSource(
            jobs_updated = $4,
            jobs_unchanged = $5
        WHERE id = $1`,
-            [runId, jobsSeen, jobsInserted, jobsUpdated, jobsUnchanged],
-        );
+                [runId, jobsSeen, jobsInserted, jobsUpdated, jobsUnchanged],
+            );
+
+            await client.query(
+                `UPDATE ats_sources
+       SET last_checked_at = NOW(), last_success_at = NOW()
+       WHERE id = $1`,
+                [source.id],
+            );
+
+            await client.query("COMMIT");
+        } catch (error) {
+            await client.query("ROLLBACK");
+            throw error;
+        } finally {
+            client.release();
+        }
 
         return {
             sourceId: source.id,
@@ -212,6 +260,7 @@ export async function ingestSource(
             jobsInserted,
             jobsUpdated,
             jobsUnchanged,
+            jobsDeactivated,
         };
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

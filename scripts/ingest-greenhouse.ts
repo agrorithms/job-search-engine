@@ -52,7 +52,7 @@ async function main(): Promise<void> {
   console.log(
     `Greenhouse ingestion complete: ${summary.jobsSeen} seen, ` +
     `${summary.jobsInserted} inserted, ${summary.jobsUpdated} updated, ` +
-    `${summary.jobsUnchanged} unchanged.`,
+    `${summary.jobsUnchanged} unchanged, ${summary.jobsDeactivated} closed.`,
   );
 }
 

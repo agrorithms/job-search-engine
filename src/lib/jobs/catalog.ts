@@ -9,6 +9,8 @@ export type CatalogJob = {
   applicationUrl: string;
 };
 
+export const CATALOG_PAGE_SIZE = 200;
+
 export const ACTIVE_JOB_CATALOG_QUERY = `
   SELECT
     jp.id,
@@ -23,7 +25,15 @@ export const ACTIVE_JOB_CATALOG_QUERY = `
   INNER JOIN companies c ON c.id = jp.company_id
   WHERE jp.is_active = TRUE
   ORDER BY jp.last_seen_at DESC, jp.id DESC
-  LIMIT 200
+  LIMIT ${CATALOG_PAGE_SIZE}
+`;
+
+/** The list above is capped, so the total has to be counted separately. */
+export const ACTIVE_JOB_COUNT_QUERY = `
+  SELECT COUNT(*)::int AS "total"
+  FROM job_postings jp
+  INNER JOIN companies c ON c.id = jp.company_id
+  WHERE jp.is_active = TRUE
 `;
 
 export function formatPostedDate(postedAt: Date | null): string {
