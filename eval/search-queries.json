@@ -1,0 +1,7 @@
+[
+  { "q": "data engineer", "workplace": "remote", "why": "Keyword mode put a Product Engineer role first." },
+  { "q": "machine learning infrastructure", "why": "Concept spread across many phrasings (MLOps, model serving, training platform)." },
+  { "q": "frontend react typescript", "why": "Stack-specific query; keyword should already do well, hybrid must not lose it." },
+  { "q": "help companies stop payment fraud", "why": "Natural-language intent with few literal title words." },
+  { "q": "developer tools for engineers", "why": "Product-domain query where titles rarely contain the words." }
+]

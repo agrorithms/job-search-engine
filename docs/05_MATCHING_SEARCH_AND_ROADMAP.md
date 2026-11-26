@@ -220,12 +220,13 @@ not a deadline.
 -   Phases 1--3 are complete: three ATS connectors, a 20-employer registry,
     ingestion history, and the missing-job policy with `job_events`
     (see `06_VALIDATED_INGESTION_WORKFLOW.md`).
--   Phase 4 is partly complete: keyword search plus company, location,
-    workplace, employment-type, salary, and posting-date filters.
-    Remaining: generate job embeddings, semantic retrieval, RRF hybrid
-    ranking, and the search-mode switch. The embedding model is chosen
-    (local `qwen3-embedding:0.6b`, 1024 dimensions); see
-    `07_EMBEDDINGS_AND_HYBRID_SEARCH.md` for the design and decision log.
+-   Phase 4 is built: keyword search plus company, location, workplace,
+    employment-type, salary, and posting-date filters; job embeddings
+    (local `qwen3-embedding:0.6b`, 1024 dimensions, `npm run embed`);
+    semantic retrieval; RRF hybrid ranking; and the search-mode switch.
+    Remaining: the first full embedding backfill, then re-running the
+    evaluation queries. See `07_EMBEDDINGS_AND_HYBRID_SEARCH.md` for the
+    design and decision log.
     Seniority is not yet populated by any connector.
 -   The vertical slice below is complete.
 

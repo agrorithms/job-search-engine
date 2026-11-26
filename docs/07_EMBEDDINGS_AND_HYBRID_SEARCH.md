@@ -1,6 +1,7 @@
 # Embeddings and Hybrid Search
 
-Status: agreed design, not yet implemented. Decided 2026-11-26.
+Status: implemented 2026-11-26, except the full backfill (implementation step 7), which is
+started by hand. See "Implementation notes" at the end. Decided 2026-11-26.
 
 This document finishes Phase 4 of the roadmap (`05_MATCHING_SEARCH_AND_ROADMAP.md`):
 job embeddings, semantic retrieval, and Reciprocal Rank Fusion (RRF) hybrid ranking on top of the existing
@@ -56,7 +57,8 @@ embedBatch(texts: string[], inputType: InputType): Promise<number[][]>;
   `EMBEDDING_MODEL` (default `qwen3-embedding:0.6b`), an optional auth header, and a request
   timeout. It calls `POST /api/embed`.
 - For `inputType === 'query'`, the provider adds Qwen's instruction prefix:
-  `Instruct: Given a job search query, retrieve relevant job postings\nQuery: <text>`.
+  `Instruct: Given a job search query, retrieve relevant job postings\nQuery:<text>`
+  (no space after `Query:`, as in the Qwen model card; see D12).
   Documents are embedded as they are. Callers never see the prefix.
 - Every vector is checked with `length === 1024` before it is used or stored. A mismatch throws.
 
@@ -251,6 +253,30 @@ On Vercel, every semantic search must embed the query at request time, so the em
 endpoint must be reachable from Vercel. Ingestion and `npm run embed` cannot run on Vercel
 functions and would need another home, such as the Oracle box.
 
+### D12. Query prefix follows the Qwen model card exactly (changed during implementation)
+
+**What changed:** this document first wrote the prefix as `...\nQuery: <text>`, with a space.
+The implementation uses `...\nQuery:<text>`, with no space.
+
+**Why:** the reference Python code on the Qwen3-Embedding model card formats queries as
+`f'Instruct: {task_description}\nQuery:{query}'`. One serving example on the same card shows a
+space, so the card contradicts itself. The Python code is the reference implementation, and the
+model was most likely trained with that format. Ollama does not add the instruction itself,
+so the app has to send it. The prefix is only added for `qwen3-embedding` models. `bge-m3`
+takes no instruction.
+
+### D13. Semantic-only mode also returns at most 200 jobs (added during implementation)
+
+**What changed:** the design capped only hybrid at the top 200 per mode. Semantic-only mode
+now uses the same cap and shows the 200 jobs closest to the query, 50 per page.
+
+**Why:** cosine distance has no cut-off for "not relevant". An uncapped semantic search would
+rank every embedded job, about 3,500. Past the first couple of hundred, the "closest" jobs
+barely relate to the query. With one cap, hybrid and semantic-only also share one code path.
+
+**Rejected:** paging semantic mode through every embedded job with a full count, as keyword
+mode does.
+
 ## Corrections to the first draft spec
 
 - The `tsvector` column and its GIN index already exist (migration 001). Only the vector side is new.
@@ -268,3 +294,32 @@ functions and would need another home, such as the Oracle box.
 6. Add the semantic query and RRF hybrid to `src/lib/jobs/search.ts`, then the mode switch and
    fallback notice in `src/app/page.tsx`.
 7. Run the full overnight backfill and re-run the evaluation queries.
+
+## Implementation notes (2026-11-26)
+
+Measured on the development laptop, with Ollama in Docker and `EMBED_NUM_THREADS=4`:
+
+| Measurement | Result |
+| --- | --- |
+| Query embed, cold start (model loading into RAM) | 3.6–6.6 s |
+| Query embed, warm | about 120 ms |
+| Semantic search, warm (embed plus exact scan) | about 120 ms |
+| `npm run embed` throughput | 0.13 jobs/s (192 jobs in 1,450 s) |
+| Average embedded text | about 6,700 characters per job |
+| Projected first backfill (about 3,300 remaining jobs) | about 7 hours |
+
+**Evaluation gate:** `eval/search-queries.json` holds the fixed queries, and
+`npm run eval:search` prints the top results in each mode. With only the 200-job sample
+embedded (6% coverage), hybrid can't be judged yet. Its semantic half ranks only those 200
+jobs, so for narrow filters it mixes weakly related embedded jobs into the top results.
+Semantic mode already finds relevant jobs that keyword search misses, for example
+"Fraud Operations Manager" and "Payment Risk Intern" for "help companies stop payment
+fraud". Re-run the evaluation after the full backfill.
+
+**Choices the design left open:**
+- `EMBED_NUM_THREADS` defaults to 4 of 8 threads, and batches are 8 jobs.
+- Search query embeds time out after 15 s (`EMBEDDING_TIMEOUT_MS`), which covers a cold start.
+- `OLLAMA_AUTH_HEADER` takes a `Name: value` string.
+- The fallback covers embedding failures only. A database error still shows the error page.
+- The orchestration lives in `src/lib/jobs/run-search.ts` (`runJobSearch`), with the database
+  and the embedder injected. Its unit tests cover the Ollama-down fallback.

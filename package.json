@@ -10,6 +10,9 @@
     "db:migrate": "dotenv -e .env.local -- tsx scripts/migrate.ts",
     "ingest": "dotenv -e .env.local -- tsx scripts/ingest.ts",
     "ingest:greenhouse": "dotenv -e .env.local -- tsx scripts/ingest-greenhouse.ts",
+    "embed:setup": "dotenv -e .env.local -- tsx scripts/embed-setup.ts",
+    "embed": "dotenv -e .env.local -- tsx scripts/embed.ts",
+    "eval:search": "dotenv -e .env.local -- tsx scripts/eval-search.ts",
     "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {

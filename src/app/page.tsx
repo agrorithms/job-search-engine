@@ -8,7 +8,9 @@ import {
 import {
   POSTED_WITHIN_DAYS,
   SALARY_FILTER_CURRENCY,
+  SEARCH_MODES,
   SEARCH_PAGE_SIZE,
+  type SearchMode,
   parseJobSearchParams,
   searchHref,
   type SearchParams,
@@ -24,9 +26,27 @@ const POSTED_LABELS: Record<(typeof POSTED_WITHIN_DAYS)[number], string> = {
   90: "Past 90 days",
 };
 
+const MODE_LABELS: Record<SearchMode, string> = {
+  hybrid: "Hybrid (keywords + meaning)",
+  keyword: "Keywords only",
+  semantic: "Meaning only",
+};
+
+const SORT_LABELS: Record<SearchMode | "recent", string> = {
+  recent: "Most recently posted first",
+  keyword: "Sorted by keyword relevance",
+  semantic: "Sorted by closest meaning",
+  hybrid: "Sorted by keyword and meaning (hybrid)",
+};
+
 export default async function Home({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const filters = parseJobSearchParams(await searchParams);
-  const [{ jobs, total }, companies] = await Promise.all([searchJobs(filters), getCompanyOptions()]);
+  const [{ jobs, total, mode, semanticUnavailable }, companies] = await Promise.all([
+    searchJobs(filters),
+    getCompanyOptions(),
+  ]);
+  // Semantic and hybrid rank a capped candidate list rather than counting every match.
+  const ranked = mode === "hybrid" || mode === "semantic";
 
   const pageCount = Math.max(1, Math.ceil(total / SEARCH_PAGE_SIZE));
   const firstShown = total === 0 ? 0 : (filters.page - 1) * SEARCH_PAGE_SIZE + 1;
@@ -38,8 +58,13 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
 
     <form className="search" method="get" role="search" aria-label="Search active jobs">
       <div className="search-row">
-        <label className="grow"><span>Keywords</span>
-          <input type="search" name="q" defaultValue={filters.q ?? ""} placeholder="Title, skill, or technology — e.g. backend python -manager" />
+        <label className="grow"><span>Search</span>
+          <input type="search" name="q" defaultValue={filters.q ?? ""} placeholder="Title, skill, or what you want to work on — e.g. backend python -manager" />
+        </label>
+        <label><span>Mode</span>
+          <select name="mode" defaultValue={filters.mode}>
+            {SEARCH_MODES.map((option) => <option key={option} value={option}>{MODE_LABELS[option]}</option>)}
+          </select>
         </label>
         <button type="submit">Search</button>
       </div>
@@ -82,11 +107,16 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
       </p>
     </form>
 
+    {semanticUnavailable && <p className="notice" role="status">
+      Semantic search unavailable: the embedding model could not be reached, so these are keyword results.
+      Start it with <code>docker compose up -d</code>.
+    </p>}
+
     {catalogEmpty ? <section className="panel"><h2>No active jobs yet</h2><p>Run the ingestion worker to populate the catalog.</p></section> :
       <section className="catalog" aria-label="Matching job postings">
         <div className="catalog-heading">
-          <span>{total === 0 ? "No matching active jobs" : `${firstShown.toLocaleString()}–${lastShown.toLocaleString()} of ${total.toLocaleString()} matching active jobs`}</span>
-          <span>{filters.q ? "Sorted by relevance" : "Most recently posted first"}</span>
+          <span>{total === 0 ? "No matching active jobs" : `${firstShown.toLocaleString()}–${lastShown.toLocaleString()} of ${total.toLocaleString()} ${ranked ? "top-ranked" : "matching"} active jobs`}</span>
+          <span>{SORT_LABELS[mode]}</span>
         </div>
         {jobs.length > 0 && <div className="table-wrap"><table><thead><tr><th>Role</th><th>Location</th><th>Type</th><th>Salary</th><th>Posted</th><th><span className="sr-only">Application</span></th></tr></thead>
           <tbody>{jobs.map((job) => <tr key={job.id}>

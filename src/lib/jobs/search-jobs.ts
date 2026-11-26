@@ -1,5 +1,7 @@
 import { pool } from "@/lib/db/pool";
-import { buildJobSearchQuery, type JobSearchFilters, type JobSearchResult } from "./search";
+import { EmbeddingError, embed, getEmbeddingConfig } from "@/lib/embeddings";
+import { runJobSearch, type JobSearchOutcome } from "./run-search";
+import type { JobSearchFilters } from "./search";
 
 export interface CompanyOption {
   id: string;
@@ -7,15 +9,21 @@ export interface CompanyOption {
   activeJobs: number;
 }
 
-export async function searchJobs(
-  filters: JobSearchFilters,
-): Promise<{ jobs: JobSearchResult[]; total: number }> {
-  const query = buildJobSearchQuery(filters);
-  const [list, count] = await Promise.all([
-    pool.query<JobSearchResult>(query.listSql, query.listParams),
-    pool.query<{ total: number }>(query.countSql, query.countParams),
-  ]);
-  return { jobs: list.rows, total: count.rows[0]?.total ?? 0 };
+/** Searches with the real database and embedding model; see runJobSearch. */
+export async function searchJobs(filters: JobSearchFilters): Promise<JobSearchOutcome> {
+  let model = "";
+  try {
+    model = getEmbeddingConfig().model;
+  } catch (error) {
+    // A bad EMBEDDING_PROVIDER degrades to keyword search: embed() rejects with
+    // the same EmbeddingError, which runJobSearch turns into the fallback.
+    if (!(error instanceof EmbeddingError)) throw error;
+  }
+  return runJobSearch(filters, {
+    query: (sql, params) => pool.query(sql, params),
+    embedQuery: (text) => embed(text, "query"),
+    model,
+  });
 }
 
 /** Companies that currently have active jobs, for the company filter. */

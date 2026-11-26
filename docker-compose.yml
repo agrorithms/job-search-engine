@@ -12,5 +12,12 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+  # Local embedding model server (doc 07, decision D4). The model files live in
+  # the named volume, so `npm run embed:setup` only downloads them once.
+  ollama:
+    image: ollama/ollama:latest
+    ports: ["11434:11434"]
+    volumes: [ollama_models:/root/.ollama]
 volumes:
   job_search_pgdata:
+  ollama_models:
