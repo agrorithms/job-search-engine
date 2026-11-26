@@ -1,0 +1,22 @@
+{
+  "jobs": [
+    {
+      "id": "018f0ca0-0000-7000-8000-000000000001",
+      "title": "  Platform Engineer  ",
+      "location": "Remote (US)",
+      "department": "Engineering",
+      "descriptionHtml": "<h2>What you'll do</h2><p>Build reliable <strong>platforms</strong>.</p><ul><li>TypeScript</li><li>PostgreSQL</li></ul><script>ignore()</script>",
+      "applyUrl": "https://jobs.ashbyhq.com/acme/018f0ca0-0000-7000-8000-000000000001/application",
+      "publishedAt": "2024-06-01T12:00:00.000Z"
+    },
+    {
+      "id": 42,
+      "title": "Data Engineer",
+      "location": { "name": "New York, NY" },
+      "team": { "name": "Data" },
+      "descriptionPlain": "  Build data pipelines.  ",
+      "jobUrl": "https://jobs.ashbyhq.com/acme/42",
+      "publishedAt": "not-a-date"
+    }
+  ]
+}

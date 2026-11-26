@@ -1,10 +1,12 @@
 import type { ATSConnector } from "./connectors/ats-connector";
 import { GreenhouseConnector } from "./connectors/greenhouse";
 import { LeverConnector } from "./connectors/lever";
+import { AshbyConnector } from "./connectors/ashby";
 
 const connectors: ReadonlyMap<string, ATSConnector> = new Map<string, ATSConnector>([
     ["greenhouse", new GreenhouseConnector()],
     ["lever", new LeverConnector()],
+    ["ashby", new AshbyConnector()],
 ]);
 
 export function getConnector(provider: string): ATSConnector {
